@@ -1,6 +1,6 @@
 [package]
 name = "taurcord"
-version = "0.2.0"
+version = "0.2.1"
 description = "A lightweight Discord client with Vencord built on Tauri v2"
 authors = ["iAmChumby"]
 edition = "2021"
@@ -15,12 +15,6 @@ base64 = "0.22"
 
 [target."cfg(windows)".dependencies]
 webview2-com = "0.38"
-windows = { version = "0.61", features = [
-    "Win32_Foundation",
-    "Win32_UI_HiDpi",
-    "Win32_UI_Shell",
-    "Win32_UI_WindowsAndMessaging",
-] }
 
 [profile.release]
 opt-level = "s"

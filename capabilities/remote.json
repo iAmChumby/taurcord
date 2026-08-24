@@ -1,0 +1,15 @@
+{
+  "identifier": "remote-discord",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["https://discord.com", "https://discord.com/*", "https://*.discord.com", "https://*.discord.com/*"]
+  },
+  "permissions": [
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging"
+  ]
+}

@@ -1,0 +1,24 @@
+[package]
+name = "taurcord"
+version = "0.1.0"
+description = "A lightweight Discord client with Vencord built on Tauri v2"
+authors = ["iAmChumby"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+base64 = "0.22"
+
+[target."cfg(windows)".dependencies]
+webview2-com = "0.38"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

@@ -1,0 +1,5 @@
+source: https://github.com/Vencord/builds (branch main)
+release tag: n/a (rolling build archive)
+files: extension-chrome.zip pulled 2026-08-24
+Vencord version: 1.15.2 (per embedded extension manifest)
+license: GPL-3.0 (see LICENSE at repo root; Vencord is (c) Vendicated and contributors)

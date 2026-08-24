@@ -20,11 +20,29 @@ Discord installer:   ~100+ MB       installed: ~500 MB (Electron + Chromium bund
   - 100+ plugins with the full plugin configuration UI
   - Themes (local QuickCSS and remote theme URLs)
   - Vencord settings section inside Discord's settings
+- **Imports your existing desktop-Vencord setup on first launch** — enabled plugins, plugin
+  settings, themes and QuickCSS are migrated from `%APPDATA%\Vencord` automatically
+- **Custom themed titlebar** — frameless window with an in-app titlebar drawn from Discord's own
+  CSS variables, so Vencord themes restyle the window chrome along with everything else. Drag,
+  double-click maximize, and min/max/close all work natively.
 - Voice chat ready out of the box: microphone, camera and notification permissions are granted
   automatically at the WebView2 level (no permission popups, no blocked mic)
 - External links open in your real browser; Discord navigation stays in the app
 - Single-instance: launching Taurcord twice focuses the existing window
 - Per-user install (no admin/UAC required), clean uninstall
+
+## Migrating from desktop Vencord
+
+If you have the classic Vencord installed into the Discord desktop client, Taurcord imports it on
+first launch:
+
+- `settings.json` (enabled plugins + all plugin settings) → the app's settings store
+- `themes/*.theme.css` → the theme library (enabled themes stay enabled)
+- `settings/quickCss.css` → QuickCSS
+
+The import runs once (flagged in the app's storage). To re-import after changing your desktop
+Vencord setup, delete the `__taurcordVencordMigrated` key from the site's localStorage, or just
+ask in an issue for a "re-import" button.
 
 ## Install
 
@@ -90,6 +108,9 @@ replace those two files, and rebuild. See `resources/vencord/VERSION.txt` for th
 
 - The Monaco-based QuickCSS editor loads its vendor assets from the extension package, which is
   not bundled; QuickCSS falls back to a plain editor. Themes and plugins are unaffected.
+- Titlebar buttons don't show a hover highlight (they are native hit-zones, not DOM buttons), and
+  Win11 snap-layouts-on-hover isn't available. Drag, double-click maximize, and all three buttons
+  work.
 - Vencord's global keybinds (toggle mute/deafen via extension commands) are unavailable — use
   Discord's in-app keybinds instead.
 - Screen sharing uses the WebView2 capture stack; if a picker doesn't appear on your machine,

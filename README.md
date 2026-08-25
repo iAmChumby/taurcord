@@ -33,16 +33,18 @@ Discord installer:   ~100+ MB       installed: ~500 MB (Electron + Chromium bund
 
 ## Migrating from desktop Vencord
 
-If you have the classic Vencord installed into the Discord desktop client, Taurcord imports it on
-first launch:
+If you have the classic Vencord installed into the Discord desktop client, Taurcord mirrors it on
+**every launch**:
 
 - `settings.json` (enabled plugins + all plugin settings) → the app's settings store
 - `themes/*.theme.css` → the theme library (enabled themes stay enabled)
 - `settings/quickCss.css` → QuickCSS
 
-The import runs once (flagged in the app's storage). To re-import after changing your desktop
-Vencord setup, delete the `__taurcordVencordMigrated` key from the site's localStorage, or just
-ask in an issue for a "re-import" button.
+Your desktop Vencord folder is the source of truth: changes you make there apply on the next
+Taurcord restart. The flip side: Vencord changes made *inside* Taurcord are overwritten on the
+next launch. Theme rendering requires bypassing Discord's Content-Security-Policy (Taurcord calls
+`Page.setBypassCSP` over the WebView2 DevTools protocol at startup); only Discord content is ever
+loaded in the webview.
 
 ## Install
 

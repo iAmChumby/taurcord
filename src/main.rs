@@ -77,8 +77,14 @@ fn js_b64(s: &str) -> String {
     format!("decodeURIComponent(escape(atob('{b64}')))")
 }
 
+struct VencordMigration {
+    settings: String,
+    quick_css: String,
+    themes: Vec<(String, String)>,
+}
+
 #[cfg(windows)]
-fn load_vencord_migration() -> Option<String> {
+fn load_vencord_migration() -> Option<VencordMigration> {
     let base = std::path::PathBuf::from(std::env::var("APPDATA").ok()?).join("Vencord");
     let settings = fs::read_to_string(base.join("settings").join("settings.json")).ok()?;
     let quick_css = fs::read_to_string(base.join("settings").join("quickCss.css")).unwrap_or_default();
@@ -98,72 +104,91 @@ fn load_vencord_migration() -> Option<String> {
             }
         }
     }
-    eprintln!(
-        "[taurcord] migrating desktop Vencord data: settings {}B, quickCss {}B, {} theme(s)",
-        settings.len(),
-        quick_css.len(),
-        themes.len()
-    );
-
-    let mut script = String::with_capacity(4096 + settings.len() + quick_css.len());
-    script.push_str("(function(){");
-    script.push_str("if(localStorage.getItem('__taurcordVencordMigrated'))return;");
-    script.push_str("function idb(db,store,cb){var r=indexedDB.open(db);r.onupgradeneeded=function(){r.result.createObjectStore(store);};r.onsuccess=function(){var t=r.result.transaction(store,'readwrite');cb(t.objectStore(store));t.oncomplete=function(){r.result.close();};};}");
-    script.push_str("try{");
-    script.push_str(&format!(
-        "localStorage.setItem('VencordSettings',{});",
-        js_b64(&settings)
-    ));
-    if !quick_css.trim().is_empty() {
-        script.push_str(&format!(
-            "idb('VencordData','VencordStore',function(s){{s.put({},'VencordQuickCss');}});",
-            js_b64(&quick_css)
-        ));
-    }
-    if !themes.is_empty() {
-        script.push_str("idb('VencordThemes','VencordThemeData',function(s){");
-        for (name, content) in &themes {
-            let name_js = format!("'{}'", name.replace('\\', "\\\\").replace('\'', "\\'"));
-            script.push_str(&format!("s.put({},{});", js_b64(content), name_js));
-        }
-        script.push_str("});");
-    }
-    script.push_str("localStorage.setItem('__taurcordVencordMigrated',String(Date.now()));");
-    script.push_str("console.info('[Taurcord] Vencord data migrated from desktop Vencord');");
-    script.push_str("}catch(e){console.error('[Taurcord] Vencord migration failed:',e);}");
-    script.push_str("})();");
-    Some(script)
+    Some(VencordMigration {
+        settings,
+        quick_css,
+        themes,
+    })
 }
 
 #[cfg(not(windows))]
-fn load_vencord_migration() -> Option<String> {
+fn load_vencord_migration() -> Option<VencordMigration> {
     None
 }
 
-fn build_vencord_script(assets: &VencordAssets) -> String {
-    assets.js.clone()
-}
-
-fn build_bridge_script(assets: &VencordAssets) -> String {
+fn build_bootstrap_scripts(assets: &VencordAssets, migration: Option<&VencordMigration>) -> (String, String) {
     let css_b64 = base64::engine::general_purpose::STANDARD.encode(assets.css.as_bytes());
-    let mut script = String::with_capacity(css_b64.len() + 1024);
-    script.push_str("(function(){");
-    script.push_str("function __tcAddCss(){try{var s=document.createElement('style');s.id='taurcord-vencord-css';s.textContent=decodeURIComponent(escape(atob('");
-    script.push_str(&css_b64);
-    script.push_str("')));(document.head||document.documentElement).appendChild(s);}catch(e){try{console.error('[Taurcord] css inject failed:',e);}catch(_){}}}");
-    script.push_str("if(document.head||document.documentElement){__tcAddCss();}else{document.addEventListener('DOMContentLoaded',__tcAddCss,{once:true});}");
-    script.push_str("function tcTitlebar(){if(document.getElementById('taurcord-titlebar'))return;var st=document.createElement('style');st.id='taurcord-titlebar-css';st.textContent='#app-mount{top:36px!important;height:calc(100% - 36px)!important}#taurcord-titlebar{position:fixed;top:0;left:0;right:0;height:36px;z-index:6000;user-select:none;-webkit-user-select:none}#taurcord-titlebar .tcb{position:absolute;top:0;width:46px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--interactive-normal,#b5bac1);cursor:default}#taurcord-titlebar .tcb:hover{color:var(--interactive-hover,#dbdee1)}#taurcord-titlebar .tcb-close:hover{color:#fff;background:var(--status-danger,#da373c)}#taurcord-titlebar .tcb svg{width:10px;height:10px}#taurcord-titlebar .tcb-min{right:92px}#taurcord-titlebar .tcb-max{right:46px}#taurcord-titlebar .tcb-close{right:0}';(document.head||document.documentElement).appendChild(st);var bar=document.createElement('div');bar.id='taurcord-titlebar';bar.innerHTML='<div class=\"tcb tcb-min\"><svg viewBox=\"0 0 10 10\"><path d=\"M0 5h10\" stroke=\"currentColor\"/></svg></div><div class=\"tcb tcb-max\"><svg class=\"tc-max-g\" viewBox=\"0 0 10 10\"><rect x=\"0.5\" y=\"0.5\" width=\"9\" height=\"9\" fill=\"none\" stroke=\"currentColor\"/></svg><svg class=\"tc-res-g\" viewBox=\"0 0 10 10\" style=\"display:none\"><path d=\"M2.5 2.5h5v5\" fill=\"none\" stroke=\"currentColor\"/><rect x=\"0.5\" y=\"4.5\" width=\"5\" height=\"5\" fill=\"#00000000\" stroke=\"currentColor\"/></svg></div><div class=\"tcb tcb-close\"><svg viewBox=\"0 0 10 10\"><path d=\"M0 0l10 10M10 0L0 10\" stroke=\"currentColor\"/></svg></div>';(document.body||document.documentElement).appendChild(bar);var inv=function(c){try{window.__TAURI_INTERNALS__.invoke(c)}catch(e){}};var mg=bar.querySelector('.tc-max-g'),rg=bar.querySelector('.tc-res-g');function syncMax(){var m=window.innerWidth>=screen.availWidth-24&&window.innerHeight>=screen.availHeight-24;mg.style.display=m?'none':'block';rg.style.display=m?'block':'none';}bar.querySelector('.tcb-min').addEventListener('click',function(){inv('plugin:window|minimize')});bar.querySelector('.tcb-max').addEventListener('click',function(){inv('plugin:window|toggle_maximize');setTimeout(syncMax,150)});bar.querySelector('.tcb-close').addEventListener('click',function(){inv('plugin:window|close')});bar.addEventListener('mousedown',function(e){if(e.button===0&&e.target===bar){inv('plugin:window|start_dragging')}});bar.addEventListener('dblclick',function(e){if(e.target===bar){inv('plugin:window|toggle_maximize');setTimeout(syncMax,150)}});window.addEventListener('resize',syncMax);syncMax();}");
-    script.push_str("if(document.body){tcTitlebar();}else{document.addEventListener('DOMContentLoaded',tcTitlebar,{once:true});}");
-    script.push_str(&format!(
+
+    let mut vencord_fn = String::with_capacity(assets.js.len() + 64);
+    vencord_fn.push_str("function __tcVencord(){");
+    vencord_fn.push_str(&assets.js);
+    vencord_fn.push_str(";window.Vencord=Vencord;}");
+
+    let mut post_js = String::with_capacity(2048);
+    post_js.push_str(&format!(
         "try{{window.postMessage({{type:'vencord:meta',meta:{{EXTENSION_VERSION:'{VENCORD_VERSION}',EXTENSION_BASE_URL:'',RENDERER_CSS_URL:'data:text/css;base64,{css_b64}'}}}},'*');}}catch(e){{}}"
     ));
     if cfg!(debug_assertions) {
-        script.push_str(
-            "window.addEventListener('DOMContentLoaded',function(){setTimeout(function(){try{var b=document.createElement('div');b.style.cssText='position:fixed;bottom:8px;left:8px;z-index:999999;background:#000c;color:#fff;font:12px monospace;padding:4px 8px;border-radius:6px;pointer-events:none;';document.body.appendChild(b);var parts=['Vencord: '+(window.Vencord?'OK':'FAIL')];parts.push('ipc: '+(window.__TAURI_INTERNALS__?'yes':'NO'));function render(){b.textContent=parts.join(' | ');}var v=window.Vencord;if(v){try{var n=0,tot=0,ps=v.Plugins&&v.Plugins.plugins;if(ps)for(var k in ps){tot++;if(ps[k].started)n++;}parts.push('plugins '+n+'/'+tot);}catch(e){}try{if(window.VencordNative&&VencordNative.themes)VencordNative.themes.getThemesList().then(function(l){parts.push('themes '+l.length);render();}).catch(function(){});}catch(e){}try{if(window.VencordNative&&VencordNative.quickCss)VencordNative.quickCss.get().then(function(c){if(c&&c.length)parts.push('qcss '+c.length+'B');render();}).catch(function(){});}catch(e){}}render();}catch(_){}},6000);});window.addEventListener('DOMContentLoaded',function(){setTimeout(function(){try{if(window.__TAURI_INTERNALS__){__TAURI_INTERNALS__.invoke('plugin:window|toggle_maximize').then(function(){console.info('[Taurcord] invoke OK');}).catch(function(e){console.error('[Taurcord] invoke ERR: '+(e&&e.message||e));});}}catch(e){console.error('[Taurcord] invoke throw: '+e);}},9000);});",
+        post_js.push_str(
+            "window.addEventListener('DOMContentLoaded',function(){setTimeout(function(){try{var b=document.createElement('div');b.style.cssText='position:fixed;bottom:8px;left:8px;z-index:999999;background:#000c;color:#fff;font:12px monospace;padding:4px 8px;border-radius:6px;pointer-events:none;';document.body.appendChild(b);var parts=['Vencord: '+(window.Vencord?'OK':'FAIL')];parts.push('ipc: '+(window.__TAURI_INTERNALS__?'yes':'NO'));function render(){b.textContent=parts.join(' | ');}var v=window.Vencord;if(v){try{var n=0,tot=0,ps=v.Plugins&&v.Plugins.plugins;if(ps)for(var k in ps){tot++;if(ps[k].started)n++;}parts.push('plugins '+n+'/'+tot);}catch(e){}try{if(window.VencordNative&&VencordNative.themes)VencordNative.themes.getThemesList().then(function(l){parts.push('themes '+l.length);render();}).catch(function(){});}catch(e){}}}render();}catch(_){}},6000);});",
         );
     }
-    script.push_str("})();");
-    script
+    let post_b64 = base64::engine::general_purpose::STANDARD.encode(post_js.as_bytes());
+
+    let mut gate = String::with_capacity(8192);
+    gate.push_str("(function(){");
+    gate.push_str("function tcPost(){var s=document.createElement('script');s.textContent=decodeURIComponent(escape(atob('");
+    gate.push_str(&post_b64);
+    gate.push_str("')));(document.head||document.documentElement).appendChild(s);}");
+    gate.push_str("function tcGo(){if(window.__TC_DONE__)return;window.__TC_DONE__=true;try{__tcVencord();}catch(e){try{console.error('[Taurcord] Vencord failed:',e);}catch(_){}}tcPost();}");
+
+    gate.push_str("function tcAddCss(){try{var s=document.createElement('style');s.id='taurcord-vencord-css';s.textContent=decodeURIComponent(escape(atob('");
+    gate.push_str(&css_b64);
+    gate.push_str("')));(document.head||document.documentElement).appendChild(s);}catch(e){try{console.error('[Taurcord] css inject failed:',e);}catch(_){}}}");
+    gate.push_str("if(document.head||document.documentElement){tcAddCss();}else{document.addEventListener('DOMContentLoaded',tcAddCss,{once:true});}");
+
+    gate.push_str("function tcTitlebar(){if(document.getElementById('taurcord-titlebar'))return;var st=document.createElement('style');st.id='taurcord-titlebar-css';st.textContent='#app-mount{top:36px!important;height:calc(100% - 36px)!important}#taurcord-titlebar{position:fixed;top:0;left:0;right:0;height:36px;z-index:6000;user-select:none;-webkit-user-select:none}#taurcord-titlebar .tcb{position:absolute;top:0;width:46px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--interactive-normal,#b5bac1);cursor:default}#taurcord-titlebar .tcb:hover{color:var(--interactive-hover,#dbdee1)}#taurcord-titlebar .tcb-close:hover{color:#fff;background:var(--status-danger,#da373c)}#taurcord-titlebar .tcb svg{width:10px;height:10px}#taurcord-titlebar .tcb-min{right:92px}#taurcord-titlebar .tcb-max{right:46px}#taurcord-titlebar .tcb-close{right:0}';(document.head||document.documentElement).appendChild(st);var bar=document.createElement('div');bar.id='taurcord-titlebar';bar.innerHTML='<div class=\"tcb tcb-min\"><svg viewBox=\"0 0 10 10\"><path d=\"M0 5h10\" stroke=\"currentColor\"/></svg></div><div class=\"tcb tcb-max\"><svg class=\"tc-max-g\" viewBox=\"0 0 10 10\"><rect x=\"0.5\" y=\"0.5\" width=\"9\" height=\"9\" fill=\"none\" stroke=\"currentColor\"/></svg><svg class=\"tc-res-g\" viewBox=\"0 0 10 10\" style=\"display:none\"><path d=\"M2.5 2.5h5v5\" fill=\"none\" stroke=\"currentColor\"/><rect x=\"0.5\" y=\"4.5\" width=\"5\" height=\"5\" fill=\"#00000000\" stroke=\"currentColor\"/></svg></div><div class=\"tcb tcb-close\"><svg viewBox=\"0 0 10 10\"><path d=\"M0 0l10 10M10 0L0 10\" stroke=\"currentColor\"/></svg></div>';(document.body||document.documentElement).appendChild(bar);var inv=function(c){try{window.__TAURI_INTERNALS__.invoke(c)}catch(e){}};var mg=bar.querySelector('.tc-max-g'),rg=bar.querySelector('.tc-res-g');function syncMax(){var m=window.innerWidth>=screen.availWidth-24&&window.innerHeight>=screen.availHeight-24;mg.style.display=m?'none':'block';rg.style.display=m?'block':'none';}bar.querySelector('.tcb-min').addEventListener('click',function(){inv('plugin:window|minimize')});bar.querySelector('.tcb-max').addEventListener('click',function(){inv('plugin:window|toggle_maximize');setTimeout(syncMax,150)});bar.querySelector('.tcb-close').addEventListener('click',function(){inv('plugin:window|close')});bar.addEventListener('mousedown',function(e){if(e.button===0&&e.target===bar){inv('plugin:window|start_dragging')}});bar.addEventListener('dblclick',function(e){if(e.target===bar){inv('plugin:window|toggle_maximize');setTimeout(syncMax,150)}});window.addEventListener('resize',syncMax);syncMax();}");
+    gate.push_str("if(document.body){tcTitlebar();}else{document.addEventListener('DOMContentLoaded',tcTitlebar,{once:true});}");
+    gate.push_str("try{if(!sessionStorage.getItem('__tcCspRetry')){fetch('data:text/css;base64,LnR7fQ==').catch(function(){sessionStorage.setItem('__tcCspRetry','1');location.reload();});}}catch(e){}");
+
+    match migration {
+        Some(m) => {
+            eprintln!(
+                "[taurcord] importing desktop Vencord data: settings {}B, quickCss {}B, {} theme(s)",
+                m.settings.len(),
+                m.quick_css.len(),
+                m.themes.len()
+            );
+            gate.push_str("var ops=0;");
+            gate.push_str("function tcDone(){ops--;if(ops<=0)tcGo();}");
+            gate.push_str("function tcIdb(db,store,cb){ops++;var r=indexedDB.open(db);r.onupgradeneeded=function(){r.result.createObjectStore(store);};r.onsuccess=function(){try{var t=r.result.transaction(store,'readwrite');cb(t.objectStore(store));t.oncomplete=function(){r.result.close();tcDone();};}catch(e){tcDone();}};r.onerror=function(){tcDone();};}");
+            gate.push_str(&format!(
+                "try{{localStorage.setItem('VencordSettings',{});}}catch(e){{}}",
+                js_b64(&m.settings)
+            ));
+            if !m.quick_css.trim().is_empty() {
+                gate.push_str(&format!(
+                    "tcIdb('VencordData','VencordStore',function(s){{s.put({},'VencordQuickCss');}});",
+                    js_b64(&m.quick_css)
+                ));
+            }
+            if !m.themes.is_empty() {
+                gate.push_str("tcIdb('VencordThemes','VencordThemeData',function(s){");
+                for (name, content) in &m.themes {
+                    let name_js = format!("'{}'", name.replace('\\', "\\\\").replace('\'', "\\'"));
+                    gate.push_str(&format!("s.put({},{});", js_b64(content), name_js));
+                }
+                gate.push_str("});");
+            }
+            gate.push_str("if(ops<=0)tcGo();setTimeout(tcGo,1500);");
+        }
+        None => {
+            gate.push_str("tcGo();");
+        }
+    }
+
+    gate.push_str("})();");
+    (vencord_fn, gate)
 }
 
 #[cfg(windows)]
@@ -201,6 +226,16 @@ fn attach_windows_hooks(win: &tauri::WebviewWindow) {
         ) {
             eprintln!("[taurcord] permission hook failed: {e}");
         }
+
+        use windows_core::{HSTRING, PCWSTR};
+        let cdp_result = core.CallDevToolsProtocolMethod(
+            PCWSTR(HSTRING::from("Page.setBypassCSP").as_ptr()),
+            PCWSTR(HSTRING::from("{\"enabled\":true}").as_ptr()),
+            &CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(()))),
+        );
+        if let Err(e) = cdp_result {
+            eprintln!("[taurcord] setBypassCSP failed: {e}");
+        }
     });
 }
 
@@ -208,9 +243,13 @@ fn attach_windows_hooks(win: &tauri::WebviewWindow) {
 fn apply_platform_builder<R: tauri::Runtime, M: tauri::Manager<R>>(
     builder: WebviewWindowBuilder<'_, R, M>,
 ) -> WebviewWindowBuilder<'_, R, M> {
-    builder.additional_browser_args(
+    let mut args = String::from(
         "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --disable-web-security",
-    )
+    );
+    if cfg!(debug_assertions) {
+        args.push_str(" --remote-debugging-port=9223");
+    }
+    builder.additional_browser_args(&args)
 }
 
 #[cfg(not(windows))]
@@ -222,8 +261,8 @@ fn apply_platform_builder<R: tauri::Runtime, M: tauri::Manager<R>>(
 
 fn create_main_window(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let assets = load_vencord_assets(app)?;
-    let vencord_script = build_vencord_script(&assets);
-    let bridge_script = build_bridge_script(&assets);
+    let migration = load_vencord_migration();
+    let (vencord_fn, gate) = build_bootstrap_scripts(&assets, migration.as_ref());
     let start_url: Url = match std::env::var("TAURCORD_URL") {
         Ok(url) if cfg!(debug_assertions) => url.parse().expect("valid TAURCORD_URL"),
         _ => DISCORD_URL.parse().expect("valid discord url"),
@@ -231,18 +270,14 @@ fn create_main_window(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::
 
     let debug_prefix = if cfg!(debug_assertions) { start_url.as_str().to_string() } else { String::new() };
 
-    let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(start_url))
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(start_url))
         .title("Taurcord")
         .inner_size(1280.0, 832.0)
         .min_inner_size(940.0, 500.0)
         .decorations(false)
-        .background_color(Color(0x31, 0x33, 0x38, 0xFF));
-    if let Some(migration) = load_vencord_migration() {
-        builder = builder.initialization_script(migration);
-    }
-    let builder = builder
-        .initialization_script(vencord_script)
-        .initialization_script(bridge_script)
+        .background_color(Color(0x31, 0x33, 0x38, 0xFF))
+        .initialization_script(vencord_fn)
+        .initialization_script(gate)
         .on_navigation(move |url| {
             if !debug_prefix.is_empty() && url.as_str().starts_with(debug_prefix.as_str()) {
                 return true;
